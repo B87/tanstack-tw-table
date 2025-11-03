@@ -20,6 +20,11 @@ jobs:
         with:
           version: 10
 
+      - name: Configure pnpm to match lockfile
+        run: |
+          # Ensure pnpm config matches the lockfile settings
+          pnpm config set auto-install-peers false
+
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4
         with:
