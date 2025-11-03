@@ -107,7 +107,7 @@ jobs:
 
       - name: Test package tarball
         run: |
-          pnpm pack --dry-run
+          pnpm pack
           echo "✅ Package tarball is valid"
 
       - name: Publish to npm
