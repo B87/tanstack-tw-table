@@ -1,6 +1,6 @@
 {
   "name": "@b87/tanstack-tw-table",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "description": "TanStack Table with shadcn/ui, server-side support, views, i18n, and framework-agnostic routing",
   "keywords": [
     "react",
