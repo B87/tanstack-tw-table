@@ -1,0 +1,25 @@
+---
+alwaysApply: true
+---
+
+# TanStack Table philosophy
+
+Headless, UI-agnostic. It ships logic, not markup/CSS. You bring the components (great with shadcn/ui, Tailwind, Radix, MUI, etc.).
+
+Framework-agnostic core. One core, adapters for React/Svelte/Solid/Vue. Same mental model everywhere.
+
+Controlled state first. Sorting, filtering, pagination, selection, column vis/resize, etc. are your state. The table exposes models & helpers; you decide where state lives (local, Redux, Zustand, URL, server).
+
+Data in → models out. Pure, memoized calculations (row model, column model). Minimal re-renders, stable refs, and predictable performance.
+
+Opt-in features. Small core; add only what you need. Tree-shakeable and composable.
+
+Type-safety as a feature. Strong TS generics for rows, accessors, and column defs; catches config/renderer mistakes at compile time.
+
+Server-friendly. It doesn’t fetch. You can do server-side sorting/filtering/pagination easily (pairs naturally with TanStack Query or your own data layer).
+
+Composable, not monolithic. Hooks/utilities instead of a “god component.” You assemble tables, grids, and complex layouts from primitives.
+
+Performance-focused. Encourages virtualization (via @tanstack/react-virtual), memoized accessors, and fine-grained updates.
+
+Examples ≠ API. The examples are just patterns; the library avoids opinionated behaviors so you can match your design system and a11y strategy.

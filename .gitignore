@@ -1,0 +1,6 @@
+node_modules
+.codacy
+dist
+.pnpm-store
+**/.next
+TODO.md

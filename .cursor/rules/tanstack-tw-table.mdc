@@ -1,0 +1,304 @@
+---
+alwaysApply: true
+---
+
+# @b87/tanstack-tw-table Usage Guide
+
+## Entry Points
+
+1. **`DataTable`** (Simple) - Batteries-included, auto-detects columns from metadata
+2. **`DataTableCore`** (Advanced) - Requires `useDataTable` hook, manual column extraction
+3. **`useDataTable` hook** (Headless) - Full control, use with `DataTableCore`
+
+## Client-Side vs Server-Side
+
+**Client-Side** (`mode: "client"`):
+- Dataset < 10k rows, static data, instant filtering
+- Use `DataTable` component
+- Auto-detects columns from `column.meta`
+- **REQUIRED:** Set `server.mode: "client"` or filters/sorting won't work
+
+**Server-Side** (`manualPagination/Sorting/Filtering: true`):
+- Dataset > 10k rows, dynamic data, server queries
+- Use `DataTableCore` with `useDataTable` hook
+- Use `useServerQuery` for query building
+- **REQUIRED:** Set `urlSync: false` (conflicts with API params)
+
+## Client-Side Pattern
+
+```tsx
+import { DataTable } from "@b87/tanstack-tw-table";
+import { createNextRouter } from "@b87/tanstack-tw-table/routing";
+
+// Column metadata auto-detection (RECOMMENDED)
+const columns: ColumnDef<User>[] = [
+  {
+    accessorKey: "name",
+    header: "Name",
+    meta: { searchable: true }, // ✅ Auto-detected
+  },
+  {
+    accessorKey: "status",
+    header: "Status",
+    meta: {
+      filterable: {
+        options: [{ label: "Active", value: "active" }],
+      },
+    }, // ✅ Auto-detected
+  },
+];
+
+<DataTable
+  data={users}
+  columns={columns}
+  pageCount={Math.ceil(users.length / 10)}
+  tableId="users-table"
+  router={createNextRouter()} // Optional: for URL sync
+  features={{
+    urlSync: true,
+    viewManagement: true,
+  }}
+  server={{
+    mode: "client", // ⚠️ CRITICAL: Required for client-side operations
+  }}
+/>
+```
+
+**Key Points:**
+- `DataTable` auto-detects from `column.meta` - don't pass `searchableColumns`/`filterableColumns`
+- Only extract manually if using `DataTableCore`: `extractSearchableColumns(columns)`
+
+## Server-Side Pattern
+
+```tsx
+"use client";
+
+import { useState, useCallback, useEffect, useMemo } from "react";
+import type { ColumnDef, ColumnFiltersState, SortingState, PaginationState } from "@tanstack/react-table";
+import { DataTableCore, useDataTable, useServerQuery } from "@b87/tanstack-tw-table";
+import { extractSearchableColumns, extractFilterableColumns } from "@b87/tanstack-tw-table";
+
+export function ServerSideTable() {
+  const [users, setUsers] = useState<User[]>([]);
+  const [pageCount, setPageCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Query building hook
+  const { buildQuery, processServerResponse } = useServerQuery<User>({
+    searchableColumns: ["name", "email"], // Array of keys
+    enableQueryBuilder: true,
+  });
+
+  // State Injection Pattern: Callbacks receive complete state
+  const fetchData = useCallback(async (tableState: {
+    columnFilters?: ColumnFiltersState;
+    sorting?: SortingState;
+    globalFilter?: string;
+    pagination?: PaginationState;
+  }) => {
+    setIsLoading(true);
+    try {
+      const queryParams = buildQuery(
+        tableState.columnFilters || [],
+        tableState.sorting || [],
+        tableState.globalFilter,
+        tableState.pagination
+      );
+      const response = await fetch(`/api/users?${queryParams.toString()}`);
+      const result = await response.json();
+
+      processServerResponse(result);
+      setUsers(result.data);
+      setPageCount(result.pagination?.totalPages || 1);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [buildQuery, processServerResponse]);
+
+  const columns = useMemo<ColumnDef<User>[]>(() => [
+    { accessorKey: "name", header: "Name", meta: { searchable: true } },
+    // ... more columns
+  ], []);
+
+  const { table } = useDataTable({
+    data: users,
+    columns,
+    pageCount,
+    tableId: "server-table",
+    manualPagination: true,  // ⚠️ REQUIRED
+    manualSorting: true,     // ⚠️ REQUIRED
+    manualFiltering: true,   // ⚠️ REQUIRED
+    urlSync: false,          // ⚠️ REQUIRED: Disable for server-side
+    // State Injection: Use complete state from callbacks
+    onSortingChange: async ({ sorting, state, resetPagination }) => {
+      await fetchData({
+        ...state,
+        sorting,
+        pagination: resetPagination
+          ? { pageIndex: 0, pageSize: state.pagination.pageSize }
+          : state.pagination,
+      });
+    },
+    onFilterChange: async ({ columnFilters, globalFilter, state }) => {
+      await fetchData({
+        ...state,
+        columnFilters,
+        globalFilter,
+        pagination: { pageIndex: 0, pageSize: state.pagination.pageSize }, // Reset pagination
+      });
+    },
+    onPaginationChange: async ({ pagination, state }) => {
+      await fetchData({ ...state, pagination });
+    },
+  });
+
+  useEffect(() => {
+    fetchData({ columnFilters: [], sorting: [], globalFilter: "", pagination: { pageIndex: 0, pageSize: 10 } });
+  }, []);
+
+  return (
+    <DataTableCore
+      table={table}
+      columns={columns}
+      searchableColumns={extractSearchableColumns(columns)}
+      filterableColumns={extractFilterableColumns(columns)}
+      isLoading={isLoading}
+    />
+  );
+}
+```
+
+## Critical Patterns
+
+### State Injection Pattern (Server-Side)
+
+**✅ ALWAYS DO:** Use complete state from callbacks:
+
+```tsx
+onSortingChange: async ({ sorting, state, resetPagination }) => {
+  // state already contains: columnFilters, sorting, pagination, globalFilter
+  await fetchData({ ...state, sorting });
+}
+```
+
+**❌ NEVER DO:** Access table state manually (causes stale closures):
+
+```tsx
+onSortingChange: async ({ sorting }) => {
+  const state = table.getState(); // ❌ BAD
+  await fetchData({ sorting, ...state });
+}
+```
+
+### Column Metadata Pattern
+
+**✅ ALWAYS DO:** Define in `column.meta` for auto-detection:
+
+```tsx
+const columns: ColumnDef<User>[] = [
+  {
+    accessorKey: "name",
+    header: "Name",
+    meta: { searchable: true }, // ✅ Auto-detected
+  },
+];
+```
+
+**❌ NEVER DO:** Use type assertions (defeats type safety):
+
+```tsx
+{ id: "name" as keyof User, title: "Name" } // ❌ BAD
+```
+
+### Reset Pagination on Filter/Sort Changes
+
+**✅ ALWAYS DO:** Reset to page 0 when filters/sorting change:
+
+```tsx
+onFilterChange: async ({ columnFilters, globalFilter, state }) => {
+  await fetchData({
+    ...state,
+    columnFilters,
+    globalFilter,
+    pagination: { pageIndex: 0, pageSize: state.pagination.pageSize }, // ✅ Reset
+  });
+}
+```
+
+## Router Adapters
+
+```tsx
+// Next.js (App Router)
+import { createNextRouter } from "@b87/tanstack-tw-table/routing";
+const router = createNextRouter();
+
+// React Router
+import { createReactRouterAdapter } from "@b87/tanstack-tw-table/routing";
+const router = createReactRouterAdapter();
+
+// No router (memory only)
+// Omit router prop entirely
+```
+
+## Common Mistakes & Fixes
+
+| Problem | Solution |
+|---------|----------|
+| Filters don't work (client-side) | Add `server.mode: "client"` |
+| URL sync conflicts (server-side) | Set `urlSync: false` |
+| Stale closures in callbacks | Use state injection pattern, don't call `table.getState()` |
+| TypeScript errors on column IDs | Use `column.meta` instead of type assertions |
+| Pagination stays on wrong page after filter | Reset to `pageIndex: 0` in `onFilterChange` |
+| Missing columns in search/filter | Add `meta: { searchable: true }` or `meta: { filterable: {...} }` |
+
+## Quick Reference
+
+### Imports
+
+```tsx
+// Components
+import { DataTable, DataTableCore } from "@b87/tanstack-tw-table";
+
+// Hooks
+import { useDataTable, useServerQuery } from "@b87/tanstack-tw-table";
+
+// Utilities
+import { extractSearchableColumns, extractFilterableColumns } from "@b87/tanstack-tw-table";
+import { DataTableQueryBuilder, FilterOperator } from "@b87/tanstack-tw-table";
+
+// Routing
+import { createNextRouter, createReactRouterAdapter } from "@b87/tanstack-tw-table/routing";
+```
+
+### Required Props Checklist
+
+**Client-Side (`DataTable`):**
+- ✅ `data` - Array of data
+- ✅ `columns` - ColumnDef array with `meta` for searchable/filterable
+- ✅ `pageCount` - Number of pages
+- ✅ `tableId` - Unique identifier
+- ✅ `server.mode: "client"` - **Required**
+
+**Server-Side (`DataTableCore` + `useDataTable`):**
+- ✅ `manualPagination: true`
+- ✅ `manualSorting: true`
+- ✅ `manualFiltering: true`
+- ✅ `urlSync: false` - **Required**
+- ✅ `onSortingChange`, `onFilterChange`, `onPaginationChange` callbacks
+- ✅ `searchableColumns` and `filterableColumns` props (extracted from columns)
+
+## Best Practices
+
+1. **Column Metadata First** - Always define `searchable`/`filterable` in `column.meta`
+2. **State Injection** - Use complete state from callbacks, never `table.getState()`
+3. **Reset Pagination** - Always reset to page 0 on filter/sort changes
+4. **Memoize Columns** - Use `useMemo` for column definitions
+5. **Wrap fetchData** - Use `useCallback` with stable dependencies
+6. **Error Handling** - Always handle errors and loading states in server-side
+7. **URL Sync** - Enable for client-side, disable for server-side
+
+## Documentation
+
+- [Setup Guide](./docs/setup.md) - Installation and configuration
+- [Client-Side Usage](./docs/client-side-usage.md) - Complete client-side guide
+- [Server-Side Usage](./docs/server-side-usage.md) - Complete server-side guide

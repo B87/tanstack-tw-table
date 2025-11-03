@@ -1,0 +1,7 @@
+packages:
+  - '.'
+  - 'examples/*'
+
+minimumReleaseAge: 240
+minimumReleaseAgeExclude:
+  - '@b87/tanstack-tw-table'

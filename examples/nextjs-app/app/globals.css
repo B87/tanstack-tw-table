@@ -1,0 +1,5 @@
+@import "@b87/tanstack-tw-table/theme-v3.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

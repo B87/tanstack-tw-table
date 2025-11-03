@@ -1,0 +1,136 @@
+---
+alwaysApply: true
+---
+
+
+The data table includes comprehensive testing for date filtering functionality with a user-centric approach:
+
+#### Test Philosophy
+
+```tsx
+// ✅ GOOD: Test what users see and do
+import { render, screen, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import "@testing-library/jest-dom";
+
+describe("DataTableDateFilter - User Experience", () => {
+  it("shows active filter state when date is selected", () => {
+    const mockColumn = createMockColumn({
+      operator: FilterOperator.DATE_AFTER,
+      date: new Date("2024-01-15"),
+    });
+
+    render(<DataTableDateFilter column={mockColumn as any} title="Created Date" />);
+
+    // Test what the user actually sees
+    expect(screen.getByText(/Created Date:/)).toBeInTheDocument();
+    expect(screen.getByText(/Jan 15, 2024/)).toBeInTheDocument();
+  });
+
+  it("shows date range for BETWEEN operator", () => {
+    const mockColumn = createMockColumn({
+      operator: FilterOperator.DATE_BETWEEN,
+      date: new Date("2024-01-15"),
+      endDate: new Date("2024-01-20"),
+    });
+
+    render(<DataTableDateFilter column={mockColumn as any} title="Created Date" />);
+
+    // User sees formatted date range
+    expect(screen.getByText(/Jan 15, 2024 - Jan 20, 2024/)).toBeInTheDocument();
+  });
+});
+
+// ❌ BAD: Test implementation details
+describe("DataTableDateFilter - Implementation Details", () => {
+  it("should call setFilterValue with correct format", () => {
+    // This tests internal behavior, not user experience
+  });
+});
+```
+
+#### Testing QueryBuilder Integration
+
+```tsx
+// Test that date filters work correctly with QueryBuilder
+describe("Date Filter Integration", () => {
+  it("creates filter values that QueryBuilder can process", () => {
+    const dateFilterValue = {
+      operator: FilterOperator.DATE_AFTER,
+      date: new Date("2024-01-15"),
+    };
+
+    const columnFilters = [
+      {
+        id: "createdAt",
+        value: dateFilterValue,
+      },
+    ];
+
+    const queryBuilder = new DataTableQueryBuilder();
+    queryBuilder.filtersFromTable(columnFilters);
+    const params = queryBuilder.build();
+
+    // Verify correct query parameters are generated
+    expect(params.get("createdAt")).toBe("2024-01-15T00:00:00.000Z");
+    expect(params.get("createdAt_op")).toBe("date_after");
+  });
+
+  it("handles date range filters correctly", () => {
+    const dateRangeFilter = {
+      operator: FilterOperator.DATE_BETWEEN,
+      date: new Date("2024-01-15"),
+      endDate: new Date("2024-01-20"),
+    };
+
+    const columnFilters = [
+      {
+        id: "createdAt",
+        value: dateRangeFilter,
+      },
+    ];
+
+    const queryBuilder = new DataTableQueryBuilder();
+    queryBuilder.filtersFromTable(columnFilters);
+    const params = queryBuilder.build();
+
+    // Should create min/max parameters for date ranges
+    expect(params.get("createdAt_min")).toBe("2024-01-15T00:00:00.000Z");
+    expect(params.get("createdAt_max")).toBe("2024-01-20T00:00:00.000Z");
+    expect(params.get("createdAt_op")).toBe("date_between");
+  });
+});
+```
+
+#### Simplified Test Setup
+
+```tsx
+// ✅ GOOD: Minimal, focused test setup
+import { DataTableDateFilter } from "../data-table-date-filter";
+import { FilterOperator } from "../query/FilterOperators";
+import { DataTableQueryBuilder } from "../query/QueryBuilder";
+
+// Simple mock that behaves like TanStack table column
+const createMockColumn = (initialValue?: any) => {
+  let filterValue = initialValue;
+  return {
+    getFilterValue: jest.fn(() => filterValue),
+    setFilterValue: jest.fn(value => {
+      filterValue = value;
+    }),
+  };
+};
+
+// ❌ BAD: Over-engineered test setup with excessive mocking
+jest.mock("@/components/ui/button", () => ({
+  Button: ({ children, onClick, ...props }: any) => (
+    <button onClick={onClick} {...props}>
+      {children}
+    </button>
+  ),
+}));
+
+jest.mock("@/components/ui/popover", () => ({
+  // ... 50+ lines of complex mocks that break with UI changes
+}));
+```

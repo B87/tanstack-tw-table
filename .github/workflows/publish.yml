@@ -1,0 +1,116 @@
+name: Publish to npm
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Triggers on tags like v1.0.0, v0.1.0, etc.
+
+jobs:
+  publish:
+    name: Build and Publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Needed for creating GitHub releases
+      id-token: write  # For npm provenance (recommended)
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3
+        with:
+          fetch-depth: 0  # Needed for version detection
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          # Enable npm provenance for enhanced security
+          # This automatically generates provenance attestations
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run type check
+        run: pnpm typecheck
+
+      - name: Run tests
+        run: pnpm test
+        continue-on-error: false
+
+      - name: Build package
+        run: pnpm build
+
+      - name: Extract version from tag
+        id: get_version
+        shell: bash
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          VERSION=${TAG_NAME#v}  # Remove 'v' prefix if present
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION from tag: $TAG_NAME"
+
+      - name: Verify package version matches tag
+        shell: bash
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          TAG_VERSION="${{ steps.get_version.outputs.version }}"
+
+          if [ "$PACKAGE_VERSION" != "$TAG_VERSION" ]; then
+            echo "❌ Error: package.json version ($PACKAGE_VERSION) doesn't match tag version ($TAG_VERSION)"
+            echo "Update package.json version before creating the tag"
+            exit 1
+          fi
+
+          echo "✅ Package version ($PACKAGE_VERSION) matches tag version ($TAG_VERSION)"
+
+      - name: Test package tarball
+        run: |
+          pnpm pack --dry-run
+          echo "✅ Package tarball is valid"
+
+      - name: Publish to npm
+        run: pnpm publish --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        continue-on-error: false
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@6da8fa9354ddfdc4aeace5fc48d7f679b5214090
+        with:
+          tag_name: ${{ steps.get_version.outputs.tag }}
+          name: Release ${{ steps.get_version.outputs.tag }}
+          body: |
+            ## Changes in ${{ steps.get_version.outputs.tag }}
+
+            See [CHANGELOG.md](./CHANGELOG.md) for detailed changes.
+
+            ### Installation
+
+            ```bash
+            npm install @b87/tanstack-tw-table@${{ steps.get_version.outputs.version }}
+            # or
+            pnpm add @b87/tanstack-tw-table@${{ steps.get_version.outputs.version }}
+            ```
+          prerelease: ${{ contains(steps.get_version.outputs.version, '-') || contains(steps.get_version.outputs.version, 'beta') || contains(steps.get_version.outputs.version, 'alpha') }}
+          draft: false
+        continue-on-error: true  # Don't fail if release creation fails

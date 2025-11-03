@@ -1,0 +1,11 @@
+__tests__
+*.test.ts
+*.test.tsx
+tsconfig.json
+tsup.config.ts
+vitest.config.ts
+.cursor
+.claude
+examples/
+pnpm-workspace.yaml
+.pnpm-store
