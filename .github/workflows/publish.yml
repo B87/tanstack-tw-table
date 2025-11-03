@@ -53,13 +53,23 @@ jobs:
 
       - name: Install dependencies
         run: |
-          # Try frozen lockfile first, fallback to regular install if lockfile config mismatch
-          # Note: If fallback is used, ensure lockfile is regenerated and committed locally
+          # CRITICAL: Must use frozen lockfile for reproducible builds
+          # If this fails, regenerate pnpm-lock.yaml locally BEFORE creating the tag
           if ! pnpm install --frozen-lockfile; then
-            echo "⚠️ Warning: Lockfile config mismatch detected. Regenerating lockfile..."
-            pnpm install --no-frozen-lockfile
-            echo "⚠️ IMPORTANT: Commit the updated pnpm-lock.yaml after this workflow completes"
+            echo "❌ Error: Lockfile configuration mismatch detected!"
+            echo ""
+            echo "This publish workflow requires an exact lockfile match for reproducibility."
+            echo "The published package must match the committed source code."
+            echo ""
+            echo "To fix this:"
+            echo "  1. Run: pnpm install --no-frozen-lockfile"
+            echo "  2. Commit the updated pnpm-lock.yaml"
+            echo "  3. Create a new tag and push"
+            echo ""
+            echo "DO NOT proceed with publishing - the lockfile must be committed first."
+            exit 1
           fi
+          echo "✅ Dependencies installed with frozen lockfile (reproducible build)"
 
       - name: Run type check
         run: pnpm typecheck
