@@ -386,7 +386,7 @@ export function useDataTable<TData, TValue>({
   }, [loadViews]);
 
   // URL Sync: Debounced sync of table state to URL
-  const updateUrlTimeoutRef = useRef<NodeJS.Timeout>();
+  const updateUrlTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const lastUrlStateRef = useRef<string>("");
 
   useEffect(() => {
